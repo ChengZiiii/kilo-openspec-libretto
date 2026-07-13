@@ -260,12 +260,15 @@ export function listMdFiles(dir) {
 
 // ─── openspec CLI 检测 ────────────────────────────────────────────────
 // 返回 { ok: boolean, version?: string }。超时 5s，异常不抛。
+// 注意：Windows 上 npm 全局安装产生的是 .ps1/.cmd 垫片，spawnSync 不自动解析
+// 它们（ENOENT）。设 shell: true 让 OS 解析 PATHEXT。
 export function detectOpenSpecCli() {
   try {
     const result = spawnSync('openspec', ['--version'], {
       timeout: 5000,
       encoding: 'utf8',
       windowsHide: true,
+      shell: process.platform === 'win32',
     });
     if (result.status === 0) {
       const version = (result.stdout || '').trim();
