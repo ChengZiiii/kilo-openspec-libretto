@@ -116,15 +116,15 @@ kilo-openspec-libretto/
 │   └── lib.js                   ✅ 安装器共享逻辑（纯函数 + openspec 检测）
 ├── plugin/
 │   └── index.js                 ✅ dormant config-hook（同 superpowers，待 Kilo 支持后启用）
-├── skills/                      ✅ 8 个原创 skill 目录
-│   ├── using-libretto/SKILL.md
-│   ├── explore/SKILL.md
-│   ├── propose/SKILL.md
-│   ├── apply-task/SKILL.md
-│   ├── sync-specs/SKILL.md
-│   ├── archive-change/SKILL.md
-│   ├── verify-change/SKILL.md
-│   └── handoff-session/SKILL.md
+├── skills/                      ✅ 8 个原创 skill 目录（裸名；libretto- 前缀由 junction 派生）
+│   ├── core/SKILL.md            # 显示 libretto-core（启动纪律，等价 compose-using-superpowers）
+│   ├── explore/SKILL.md         # 显示 libretto-explore
+│   ├── propose/SKILL.md         # 显示 libretto-propose
+│   ├── apply-change/SKILL.md    # 显示 libretto-apply-change（镜像 openspec-apply-change）
+│   ├── sync-specs/SKILL.md      # 显示 libretto-sync-specs
+│   ├── archive-change/SKILL.md  # 显示 libretto-archive-change
+│   ├── verify-change/SKILL.md   # 显示 libretto-verify-change
+│   └── handoff/SKILL.md         # 显示 libretto-handoff
 ├── agents/                      ✅ 3 个 agent .md（均不设 model 字段）
 │   ├── libretto.md              # 编排器（primary）
 │   ├── libretto-apply.md        # 实现 subagent
@@ -150,8 +150,9 @@ kilo-openspec-libretto/
 | 主 agent | `libretto` | 用户指定；短、好记 |
 | subagent — 实现 | `libretto-apply` | OpenSpec 的 apply 阶段 |
 | subagent — 验证 | `libretto-verify` | OpenSpec 的 verify 阶段 |
-| skill 命名空间目录 | `libretto`（junction） | `~/.kilo/skills/` 下单一命名空间 |
-| 各 skill 名 | `using-libretto`、`explore`、`propose`、`apply-task`、`sync-specs`、`archive-change`、`verify-change`、`handoff-session` | 对应 OpenSpec 阶段 + libretto 自有的 handoff |
+| skill 命名空间目录（junction 名） | `libretto` | `~/.kilo/skills/libretto` junction 指向包内 `skills/`。**Kilo 用此文件夹名做前缀**派生显示名 `libretto-*`（实测 superpowers 即此机制：junction 名 `compose` → 显示 `compose-brainstorming`） |
+| 各 skill `name:`（SKILL.md frontmatter） | **裸名**：`core`、`explore`、`propose`、`apply-change`、`sync-specs`、`archive-change`、`verify-change`、`handoff` | 裸名 + 命名空间 junction 自动派生 `libretto-core`、`libretto-explore`…。**绝不**在 `name:` 里再写 `libretto-`，否则双重前缀 |
+| skill 显示名（Kilo picker） | `libretto-core`、`libretto-explore`、`libretto-propose`、`libretto-apply-change`、`libretto-sync-specs`、`libretto-archive-change`、`libretto-verify-change`、`libretto-handoff` | 由 junction 名 `libretto` + 裸 `name:` 拼接 |
 | manifest 文件 | `.kilo-openspec-libretto.json` | 位于 `~/.config/kilo/`，隐藏 |
 | 环境变量前缀 | `KILO_LIBRETTO_*` | 对应 superpowers 的 `KILO_SUPERPOWERS_*` |
 | 斜杠命令 | 无 | 靠 agent picker 进流程（同 superpowers v0.1.3+） |
@@ -160,31 +161,38 @@ kilo-openspec-libretto/
 
 ## 6. 三个 Agent
 
-frontmatter 仅设 `description` / `mode` / `color` / `steps`，**不设 `model` 字段**——
-回退到用户全局默认模型（同 superpowers 决策）。
+frontmatter 设 `description` / `mode` / `color` / `steps`，**不设 `model` 字段**——
+回退到用户全局默认模型（同 superpowers 决策）。**三个 libretto agent 的 frontmatter
+额外带 `permission.skill: { "libretto-*": "allow" }`**——这是 skill 隔离的硬层（见
+§7.1）：只有 libretto 系 agent 被允许调用 `libretto-*` skill。若 Kilo 当前版本不识别
+agent frontmatter 里的 `permission.skill` 键（P2 实测确认），降级为软隔离——仅靠
+libretto 编排器 prompt 引用这些 skill（与 superpowers v0.1 实际行为一致），并在文档里
+把「全局 `skill: { "libretto-*": "deny" }`」作为可选加固手段记录。
 
 ### 6.1 `libretto`（primary，纯路由器）
 
 - **自己从不写代码，从不做架构决策。**
-- 强制第一步：加载 `using-libretto` skill（启动纪律 + openspec CLI 与 `openspec/`
+- 强制第一步：加载 `libretto-core` skill（启动纪律 + openspec CLI 与 `openspec/`
   前置检查）。
 - 对每个请求先发 checkpoint 做任务分类：
   - **简单**（trivial 一两行修复）：跳过完整 change 流程，直接让 `libretto-apply`
-    做或 libretto 自己做，完成后 `verify-change` 轻量过一遍。
-  - **探索**（需求不清）：先 `explore`（无 artifact），澄清后转 `propose`。
-  - **复杂 / 新功能**：走完整流程 `explore? → propose → [handoff or dispatch]
-    → apply → verify → sync → archive`。
-- `propose` 完成（4 个 planning artifact 就绪）后，**触发 `handoff-session`**：
+    做或 libretto 自己做，完成后 `libretto-verify-change` 轻量过一遍。
+  - **探索**（需求不清）：先 `libretto-explore`（无 artifact），澄清后转 `libretto-propose`。
+  - **复杂 / 新功能**：走完整流程 `libretto-explore? → libretto-propose →
+    [handoff or dispatch] → apply → libretto-verify-change → libretto-sync-specs →
+    libretto-archive-change`。
+- `libretto-propose` 完成（4 个 planning artifact 就绪）后，**触发 `libretto-handoff`**：
     给用户「跳转新会话」选项；用户选择继续则直接 dispatch `libretto-apply`。
 - 实现：dispatch `libretto-apply`（per change / per task 批次）。
 - 验证：apply 完成后 dispatch `libretto-verify`。
-- 归档：`verify` 通过后由 libretto 触发 `archive-change`（调 `openspec archive`）。
+- 归档：`libretto-verify` 通过后由 libretto 触发 `libretto-archive-change`（调
+  `openspec archive`）。
 - dispatch 时必须带：具体 change 名 / 路径、要加载的 skill、期望输出格式。
 - 语气：简短果断（同 compose）。
 
 ### 6.2 `libretto-apply`（subagent，实现）
 
-- 强制加载顺序：`using-libretto` → `apply-task`。
+- 强制加载顺序：`libretto-core` → `libretto-apply-change`。
 - 按 `tasks.md` 逐条实现：读 spec delta → 写代码 → 勾选 `[x]` → 运行测试。
 - 不做架构决策；遇到歧义 escalate 给 `libretto`，不直接问用户。
 - 每条 task 完成后更新 `tasks.md` 的 checkbox。
@@ -196,7 +204,7 @@ frontmatter 仅设 `description` / `mode` / `color` / `steps`，**不设 `model`
 
 ### 6.3 `libretto-verify`（subagent，验证）
 
-- 强制加载顺序：`using-libretto` → `verify-change`。
+- 强制加载顺序：`libretto-core` → `libretto-verify-change`。
 - 三维度验证（对齐 OpenSpec `/opsx:verify`）：
   - **Completeness**：所有 task 勾选、所有 requirement 有对应代码、scenario 覆盖。
   - **Correctness**：实现匹配 spec 意图、边界条件、错误状态。
@@ -211,29 +219,53 @@ frontmatter 仅设 `description` / `mode` / `color` / `steps`，**不设 `model`
 
 ## 7. Skill 清单（8 个，全部原创）
 
-每个 skill 是 `<name>/SKILL.md`，frontmatter 含 `description`，正文为可执行指令。
-所有 skill 都假设 `openspec` CLI 可用、`openspec/` 目录已 init。
+每个 skill 是 `<bare-name>/SKILL.md`，frontmatter 含 `name`（裸名）+ `description`，
+正文为可执行指令。所有 skill 都假设 `openspec` CLI 可用、`openspec/` 目录已 init。
+下表「显示名」= Kilo picker 里见到的名字（junction 名 `libretto` + 裸 `name:`）。
 
-| skill | 触发 | 职责 | 是否调 openspec CLI |
-|---|---|---|---|
-| `using-libretto` | 每次 libretto 会话首步 | 启动纪律、checkpoint 规则、何时加载哪个 skill、`openspec --version` 与 `openspec/` 存在性前置检查 | 是（探测） |
-| `explore` | 用户需求不清 / libretto 判定探索态 | 无 artifact 探索对话，读 codebase，对比方案，产出结论，可转 propose | 否（只读代码） |
-| `propose` | 已明确要做什么 | 建 change + 起草 proposal/specs(deltas)/design/tasks | 是（`openspec new change <name> --json`） |
-| `apply-task` | dispatched 给 libretto-apply | 单 task 实现协议：读 spec → 写代码 → 勾选 → 测试 | 否（操作代码与 tasks.md） |
-| `sync-specs` | archive 前 / 手动合并 | delta（ADDED/MODIFIED/REMOVED）合并进 `openspec/specs/` | 是（或交给 archive 自动） |
-| `archive-change` | verify 通过后 | 归档：移到 `changes/archive/YYYY-MM-DD-<name>/`、合并 delta | 是（`openspec archive <name> --json`） |
-| `verify-change` | dispatched 给 libretto-verify | 三维度验证 + 结构校验协议 | 是（`openspec validate --json`） |
-| `handoff-session` | propose 完成后 | 输出自包含 bootstrap prompt（纯文本） | 否 |
+| 裸 `name:` | 显示名 | 触发 | 职责 | 调 openspec CLI |
+|---|---|---|---|---|
+| `core` | `libretto-core` | 每次 libretto 会话首步 | 启动纪律、checkpoint 规则、何时加载哪个 skill、`openspec --version` 与 `openspec/` 存在性前置检查 | 是（探测） |
+| `explore` | `libretto-explore` | 用户需求不清 / libretto 判定探索态 | 无 artifact 探索对话，读 codebase，对比方案，产出结论，可转 propose | 否（只读代码） |
+| `propose` | `libretto-propose` | 已明确要做什么 | 建 change + 起草 proposal/specs(deltas)/design/tasks | 是（`openspec new change <name> --json`） |
+| `apply-change` | `libretto-apply-change` | dispatched 给 libretto-apply | 单 task / 整 change 实现协议：读 spec → 写代码 → 勾选 → 测试 | 否（操作代码与 tasks.md） |
+| `sync-specs` | `libretto-sync-specs` | archive 前 / 手动合并 | delta（ADDED/MODIFIED/REMOVED）合并进 `openspec/specs/` | 是（或交给 archive 自动） |
+| `archive-change` | `libretto-archive-change` | verify 通过后 | 归档：移到 `changes/archive/YYYY-MM-DD-<name>/`、合并 delta | 是（`openspec archive <name> --json`） |
+| `verify-change` | `libretto-verify-change` | dispatched 给 libretto-verify | 三维度验证 + 结构校验协议 | 是（`openspec validate --json`） |
+| `handoff` | `libretto-handoff` | propose 完成后 | 输出自包含 bootstrap prompt（纯文本） | 否 |
 
-### 7.1 skill 隔离机制（特性 A）
+> 命名说明：skill 裸名刻意与 agent 名错开——agent 叫 `libretto-apply` / `libretto-verify`，
+> skill 叫 `libretto-apply-change` / `libretto-verify-change`，避免 picker 里同名混淆。
+> bootstrap 用 `core` 而非 `using-libretto`，否则显示成 `libretto-using-libretto`（双重
+> libretto）；`libretto-core` 即 superpowers `compose-using-superpowers` 的等价物。
 
-8 个 skill 全部 junction 到 `~/.kilo/skills/libretto/` 单一命名空间目录。用户自有
-的 `~/.kilo/skills/<name>` 不受影响，只有 `libretto` agent 及其 dispatch 的 subagent
-通过 `using-libretto` 入口加载它们。机制与 superpowers 完全一致（已验证）。
+### 7.1 skill 隔离 + 前缀机制（特性 A）
+
+隔离与前缀分两层，均复刻 superpowers 实测机制：
+
+**第 1 层 — 命名空间 junction（产生 `libretto-` 前缀）**
+
+安装时在 `~/.kilo/skills/libretto` 建 junction（Windows）/ symlink（Unix）指向包内
+`skills/` 目录。Kilo 扫描 `~/.kilo/skills/<junction 名>/<skill>/SKILL.md` 时，用
+**junction 文件夹名**做前缀派生显示名：`libretto/` + 裸 `name: explore` →
+`libretto-explore`。实测 superpowers 即此机制（junction 名 `compose` → 显示
+`compose-brainstorming`）。skill 文件的 `name:` 字段保持**裸名**，绝不写 `libretto-`，
+否则双重前缀。用户自有的 `~/.kilo/skills/<name>` 与 `.kilocode/skills/openspec-*`
+都不受影响（路径不同）。
+
+**第 2 层 — agent `skill` 权限（硬隔离，可选）**
+
+三个 libretto agent 的 frontmatter 带 `permission.skill: { "libretto-*": "allow" }`，
+仅允许 libretto 系 agent 调用 `libretto-*` skill。可选加固：全局 kilo.jsonc 加
+`"skill": { "libretto-*": "deny" }`（superpowers 用户机器上即如此配置）。
+若 Kilo 当前版本不识别 frontmatter 里的 `permission.skill` 键（P2 实测确认），降级为
+**软隔离**——只有 libretto 编排器 prompt 引用这些 skill（与 superpowers v0.1 实际
+行为一致）。安装器 v0.1 **不**自动改写全局 kilo.jsonc 的 skill 权限（避免动用户
+配置），仅在文档说明可选加固。
 
 ### 7.2 跳转新会话（特性 B）
 
-`handoff-session` skill 在 propose 完成（proposal + specs + design + tasks 四件套
+`libretto-handoff` skill 在 propose 完成（proposal + specs + design + tasks 四件套
 就绪）后由 libretto 触发，输出一个 **markdown 代码块（纯文本，零文件）**：
 
 ````
@@ -242,10 +274,10 @@ frontmatter 仅设 `description` / `mode` / `color` / `steps`，**不设 `model`
 planning artifacts 已就绪（proposal/specs/design/tasks）。
 
 恢复步骤：
-1. 加载 using-libretto 与 apply-task skill
+1. 加载 libretto-core 与 libretto-apply-change skill
 2. 读取 openspec/changes/<change-name>/tasks.md 确认进度
 3. 按 libretto-apply 协议逐条实现并勾选 [x]
-4. 全部完成后建议触发 verify-change
+4. 全部完成后建议触发 libretto-verify-change
 
 （注：tasks.md 的 checkbox 是唯一进度状态来源）
 --------------------------------------------
@@ -271,8 +303,11 @@ openspec 校验。
   恢复并退出 2。
 - 打补丁前备份 `kilo.jsonc`，解析失败时恢复（退出码 2）。
 - junction（Windows）/ symlink（Unix）创建技能链接，失败回退递归复制。
-- manifest 记录：name / version / pkgRoot / skillsSrc / skillsLink /
-  skillsLinkType / skillsPathsEntry / agents。
+  **junction 名固定为 `libretto`**（`~/.kilo/skills/libretto` → 包内 `skills/`）——
+  Kilo 用此文件夹名派生 `libretto-*` 显示前缀（见 §7.1 第 1 层）。lib.js 中
+  `skillLink = path.join(skillsDir, 'libretto')`。
+- manifest 记录：name / version / pkgRoot / skillsSrc / skillsLink（=
+  `~/.kilo/skills/libretto`）/ skillsLinkType / skillsPathsEntry / agents。
 
 ### 8.2 libretto 新增：openspec CLI 检测
 
@@ -329,7 +364,7 @@ npm 命名插件（superpowers 已实测，见其 DESIGN §10 Q5）。README 明
 ## 10. per-project 初始化
 
 `openspec/` 工作区目录由 OpenSpec CLI 的 `openspec init` 创建，**不在 libretto
-安装范围内**。`using-libretto` skill 首次在项目里跑时：
+安装范围内**。`libretto-core` skill 首次在项目里跑时：
 
 1. 检测 `openspec/` 是否存在于当前工作区。
 2. 不存在 → 提示用户运行 `openspec init`（征得同意后可代跑）。
@@ -379,7 +414,7 @@ npm 命名插件（superpowers 已实测，见其 DESIGN §10 Q5）。README 明
 | 外部 CLI 依赖 | 无 | `@fission-ai/openspec`（强依赖） |
 | skill 内容 | verbatim 复制上游 MIT 内容 | 原创（参考 OpenSpec docs） |
 | 状态载体 | 无（纯方法论 skill） | `openspec/` 目录（proposal/specs/design/tasks + checkbox） |
-| session-jump | compose 编排器内置 option B | 独立 `handoff-session` skill（纯 prompt） |
+| session-jump | compose 编排器内置 option B | 独立 `libretto-handoff` skill（纯 prompt） |
 | 安装器 | 镜像 mimo-compose | 镜像 superpowers + openspec 检测 |
 | NOTICE | 记录 vendored obra 内容 | 记录运行时依赖 openspec CLI（不 vendor） |
 
@@ -389,7 +424,7 @@ npm 命名插件（superpowers 已实测，见其 DESIGN §10 Q5）。README 明
 
 | 风险 | 可能性 | 影响 | 缓解 |
 |---|---|---|---|
-| 用户未装 `openspec` CLI 就用 libretto | 高 | skill 调 CLI 全失败 | install 时检测 + 醒目提示；`using-libretto` 运行时再探测并指引 |
+| 用户未装 `openspec` CLI 就用 libretto | 高 | skill 调 CLI 全失败 | install 时检测 + 醒目提示；`libretto-core` 运行时再探测并指引 |
 | OpenSpec CLI 输出 schema 在大版本间漂移 | 中 | skill 解析 `--json` 出错 | `NOTICE` / README 锁定推荐 `@fission-ai/openspec` 版本范围；skill 对未知字段宽容（只取所需键） |
 | `openspec init` 生成的项目级 skill 与 libretto 全局 skill 命名冲突 | 低 | 都叫 propose 等 | libretto skill 在 `libretto/` 命名空间下，OpenSpec 的在 `.kilocode/skills/openspec-*/`，路径不同不冲突；文档说明二选一即可 |
 | Kilo `plugin` 字段不生效 | 中 | Path B 不可用 | Path A（npm CLI）是唯一支持方法，README 明确警告（同 superpowers） |
