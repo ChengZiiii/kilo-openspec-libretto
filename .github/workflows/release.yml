@@ -34,7 +34,7 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           # Never use cache in release builds — provenance must reflect what was just built.
-          package-manager-cache: false
+          # (omit `cache:` to disable; setting `cache: 'npm'` would require package-lock.json)
 
       - name: Install deps (zero deps — does nothing if package-lock absent)
         run: npm install --no-audit --no-fund --silent
