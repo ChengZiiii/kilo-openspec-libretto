@@ -1,0 +1,229 @@
+// bin/lib.js
+// kilo-openspec-libretto — 安装器共享逻辑（纯函数 + fs 辅助）。
+// 零第三方依赖；仅使用 node:fs / node:path / node:os / node:url / node:child_process。
+//
+// 设计说明：
+// - runInstall / runUninstall / runUpdate **返回退出码**（0–4），不调用 process.exit，
+//   以便在 node:test 中直接断言。进程退出由各入口垫片（install.js / cli.js）负责。
+// - 跨平台：所有路径用 path.join + os.homedir()/KILO_HOME，绝不手拼反斜杠。
+// - skills.paths 幂等判定用规范化路径比较（path.resolve + toLowerCase）。
+// - 卸载归属判定用清单法（manifest），替代内容嗅探。
+// - openspec CLI 检测：install 时跑 openspec --version，不存在则警告但不阻断。
+
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+// ─── 常量 ─────────────────────────────────────────────────────────────
+export const EXIT = Object.freeze({
+  OK: 0,
+  ERROR: 1,
+  PARSE_ERROR: 2,
+  NOT_WRITABLE: 3,
+  LINK_FAILED: 4,
+});
+
+export const MANIFEST_NAME = '.kilo-openspec-libretto.json';
+
+const noop = () => {};
+
+// ─── 纯函数 / 配置解析 ─────────────────────────────────────────────────
+export function readEnv(env = process.env) {
+  return {
+    HOME: env.KILO_HOME || os.homedir(),
+    DRY_RUN: env.KILO_LIBRETTO_DRY_RUN === '1',
+    VERBOSE: env.KILO_LIBRETTO_VERBOSE === '1',
+    SKIP_OPENSPEC_CHECK: env.KILO_LIBRETTO_SKIP_OPENSPEC_CHECK === '1',
+  };
+}
+
+export function resolvePaths(home) {
+  const configDir = path.join(home, '.config', 'kilo');
+  const skillsDir = path.join(home, '.kilo', 'skills');
+  return {
+    home,
+    configDir,
+    configFile: path.join(configDir, 'kilo.jsonc'),
+    agentsDir: path.join(configDir, 'agent'),
+    skillsDir,
+    // junction 名固定为 libretto —— Kilo 用此文件夹名派生 libretto-* 显示前缀
+    skillLink: path.join(skillsDir, 'libretto'),
+    manifestFile: path.join(configDir, MANIFEST_NAME),
+  };
+}
+
+export function buildContext(env = process.env) {
+  return { ...readEnv(env), ...resolvePaths(readEnv(env).HOME) };
+}
+
+// JSONC 行注释剥离：仅处理 `//`，且只在字符串外剥离。
+// 不处理块注释 —— 若 kilo.jsonc 含块注释导致解析失败，
+// 调用方从备份恢复并以退出码 2 退出。
+export function stripLineComments(raw) {
+  return raw.split('\n').map(stripLine).join('\n');
+  function stripLine(line) {
+    const idx = line.indexOf('//');
+    if (idx === -1) return line;
+    const before = line.slice(0, idx);
+    const quotes = (before.match(/(?<!\\)"/g) || []).length;
+    return quotes % 2 === 0 ? before : line;
+  }
+}
+
+export function normalizePath(p) {
+  return path.resolve(p).toLowerCase();
+}
+
+export function skillsPathsContains(paths, target) {
+  const t = normalizePath(target);
+  return Array.isArray(paths) && paths.some((p) => normalizePath(p) === t);
+}
+
+export function findPackageRoot(startDir) {
+  return path.resolve(startDir, '..');
+}
+
+export function readPackageJson(pkgRoot) {
+  const file = path.join(pkgRoot, 'package.json');
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+// ─── 日志辅助 ─────────────────────────────────────────────────────────
+export function makeLogger(verbose) {
+  return verbose ? (...a) => console.error('[libretto]', ...a) : noop;
+}
+
+// ─── fs 辅助 ──────────────────────────────────────────────────────────
+export function ensureDir(d, { dryRun = false, log = noop } = {}) {
+  if (dryRun) {
+    log('would mkdir', d);
+    return;
+  }
+  fs.mkdirSync(d, { recursive: true });
+}
+
+export function linkExists(p) {
+  return !!fs.lstatSync(p, { throwIfNoEntry: false });
+}
+
+// 安全移除：符号链接/junction 用 unlinkSync（绝不深入目标）；
+// 真实目录用 rmSync 递归；普通文件用 rmSync。
+export function safeRemove(p, { dryRun = false, log = noop } = {}) {
+  const st = fs.lstatSync(p, { throwIfNoEntry: false });
+  if (!st) return false;
+  log('removing', p);
+  if (dryRun) return true;
+  if (st.isSymbolicLink()) {
+    fs.unlinkSync(p);
+  } else if (st.isDirectory()) {
+    fs.rmSync(p, { recursive: true, force: true });
+  } else {
+    fs.rmSync(p, { force: true });
+  }
+  return true;
+}
+
+export function readJsonc(file) {
+  if (!fs.existsSync(file)) return {};
+  const raw = fs.readFileSync(file, 'utf8');
+  const stripped = stripLineComments(raw);
+  try {
+    return JSON.parse(stripped);
+  } catch (e) {
+    return { __parseError: e.message, __raw: raw };
+  }
+}
+
+export function writeJson(file, obj, { dryRun = false } = {}) {
+  if (dryRun) return;
+  fs.writeFileSync(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+}
+
+// 备份 kilo.jsonc -> kilo.jsonc.bak.<timestamp>；不存在则返回 null。
+export function backupConfig(configFile, { dryRun = false, log = noop } = {}) {
+  if (!fs.existsSync(configFile)) return null;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const bak = `${configFile}.bak.${ts}`;
+  log('backup', configFile, '->', bak);
+  if (dryRun) return bak;
+  fs.copyFileSync(configFile, bak);
+  return bak;
+}
+
+// ─── manifest 读写 ────────────────────────────────────────────────────
+export function readManifest(manifestFile) {
+  if (!fs.existsSync(manifestFile)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export function writeManifest(manifestFile, data, { dryRun = false, log = noop } = {}) {
+  log('writing manifest', manifestFile);
+  if (dryRun) return;
+  fs.writeFileSync(manifestFile, JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+export function removeManifest(manifestFile, { dryRun = false, log = noop } = {}) {
+  return safeRemove(manifestFile, { dryRun, log });
+}
+
+// 创建技能链接（Windows junction / Unix symlink），失败则递归复制兜底。
+// 返回 { type, ok, error?, fallback? }。
+export function makeSkillsLink(src, link, { dryRun = false, log = noop } = {}) {
+  if (linkExists(link)) {
+    safeRemove(link, { dryRun, log });
+  }
+  const isWin = process.platform === 'win32';
+  const linkType = isWin ? 'junction' : 'symlink';
+  log(`creating ${linkType}`, src, '->', link);
+  if (dryRun) return { type: linkType, ok: true };
+  try {
+    fs.symlinkSync(src, link, isWin ? 'junction' : 'dir');
+    return { type: linkType, ok: true };
+  } catch (e) {
+    log(`${linkType} failed (${e.message}); falling back to recursive copy`);
+    try {
+      fs.cpSync(src, link, { recursive: true, force: true });
+      return { type: 'copy', ok: true, fallback: e.message };
+    } catch (e2) {
+      return {
+        type: linkType,
+        ok: false,
+        error: `${linkType}: ${e.message}; copy fallback: ${e2.message}`,
+      };
+    }
+  }
+}
+
+// 列出源目录下的 .md 文件（agents）。
+export function listMdFiles(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => ({ name: f, abs: path.join(dir, f) }));
+}
+
+// ─── openspec CLI 检测 ────────────────────────────────────────────────
+// 返回 { ok: boolean, version?: string }。超时 5s，异常不抛。
+export function detectOpenSpecCli() {
+  try {
+    const result = spawnSync('openspec', ['--version'], {
+      timeout: 5000,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    if (result.status === 0) {
+      const version = (result.stdout || '').trim();
+      return { ok: true, version };
+    }
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
