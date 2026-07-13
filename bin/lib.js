@@ -379,3 +379,90 @@ function countSkills(srcSkills) {
     return 0;
   }
 }
+
+// ─── 编排：卸载 ───────────────────────────────────────────────────────
+export function runUninstall(opts = {}) {
+  const ctx = opts.context || buildContext();
+  const log = makeLogger(ctx.VERBOSE);
+  const dryRun = ctx.DRY_RUN;
+
+  log('uninstall from', ctx.configDir);
+
+  const bak = backupConfig(ctx.configFile, { dryRun, log });
+  const manifest = readManifest(ctx.manifestFile);
+
+  // 1. 移除 agents
+  const agentPaths = (manifest && manifest.agents) || [];
+  if (agentPaths.length === 0) {
+    log('清单缺失或无 agents 记录，回退到已知文件名');
+    for (const n of ['libretto.md', 'libretto-apply.md', 'libretto-verify.md']) {
+      agentPaths.push(path.join(ctx.agentsDir, n));
+    }
+  }
+  for (const p of agentPaths) safeRemove(p, { dryRun, log });
+
+  // 2. 移除技能链接
+  if (linkExists(ctx.skillLink)) {
+    safeRemove(ctx.skillLink, { dryRun, log });
+  }
+
+  // 3. 从 kilo.jsonc 移除本包的 skills.paths 条目
+  const config = readJsonc(ctx.configFile);
+  if (config.__parseError) {
+    if (bak && !dryRun) {
+      try {
+        fs.copyFileSync(bak, ctx.configFile);
+      } catch (e) {
+        log('恢复备份失败:', e.message);
+      }
+    }
+    console.error(`✗ kilo.jsonc 解析失败: ${config.__parseError}（已从备份恢复）`);
+    return EXIT.PARSE_ERROR;
+  }
+  let removedEntries = 0;
+  if (config.skills && Array.isArray(config.skills.paths)) {
+    const entry = (manifest && manifest.skillsPathsEntry) || null;
+    const before = config.skills.paths.length;
+    config.skills.paths = config.skills.paths.filter((p) => {
+      if (entry && normalizePath(p) === normalizePath(entry)) return false;
+      return true;
+    });
+    // 若清单缺 entry，按已知包根启发式移除
+    if (!entry) {
+      config.skills.paths = config.skills.paths.filter(
+        (p) => !/kilo-openspec-libretto[\\/]+skills/i.test(p)
+      );
+    }
+    removedEntries = before - config.skills.paths.length;
+    if (!dryRun) writeJson(ctx.configFile, config);
+  }
+
+  // 4. 移除清单
+  removeManifest(ctx.manifestFile, { dryRun, log });
+
+  console.log('✓ kilo-openspec-libretto 已卸载');
+  console.log(`  agents: ${agentPaths.length} 个文件`);
+  console.log(`  技能链接: ${ctx.skillLink}`);
+  console.log(`  kilo.jsonc: skills.paths 移除 ${removedEntries} 条`);
+  console.log('  未触碰用户自有的技能 / 代理 / 配置。');
+  return EXIT.OK;
+}
+
+// ─── 编排：更新 ───────────────────────────────────────────────────────
+// 重新运行安装（幂等）。若检测到版本变化则打印提示。
+export function runUpdate(opts = {}) {
+  const ctx = opts.context || buildContext();
+  const prev = readManifest(ctx.manifestFile);
+  const result = runInstall(opts);
+  if (result === EXIT.OK && prev && prev.version) {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    let cur = prev.version;
+    try {
+      cur = readPackageJson(root).version || prev.version;
+    } catch {}
+    if (prev.version !== cur) {
+      console.log(`  更新: kilo-openspec-libretto ${prev.version} -> ${cur}`);
+    }
+  }
+  return result;
+}
