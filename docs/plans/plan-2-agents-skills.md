@@ -1,5 +1,10 @@
 # Plan 2 — Agent 提示词与 Skill 内容（Task 7–12）
 
+> ⚠️ **历史归档（2026-07-14 已被超越）**：本计划要求 skill `name:` 用裸名、agent 不带
+> `permission.skill`——两者均**错误**。实际：`name:` 直写 `libretto-` 前缀，且三个 agent
+> frontmatter 必须带 `permission.skill: { "libretto-*": "allow" }`（否则被全局 deny 挡住，
+> 自身也调不到 skill）。见 `docs/specs/2026-07-14-libretto-design.md` §7.1。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `compose-subagent-driven-development` or `compose-executing-plans`. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** 编写 libretto 的 3 个 agent `.md` 文件与 8 个 skill `SKILL.md` 文件——全部原创内容，编码 OpenSpec 工作流的 explore→propose→apply→sync→archive+verify 各阶段。

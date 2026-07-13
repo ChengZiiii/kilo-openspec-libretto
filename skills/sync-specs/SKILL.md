@@ -1,5 +1,5 @@
 ---
-name: sync-specs
+name: libretto-sync-specs
 description: "Merge a change's delta specs (ADDED/MODIFIED/REMOVED) into the main openspec/specs/ directory. Usually automatic during archive; use manually for long-running changes."
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: propose
+name: libretto-propose
 description: "Create a change and draft its planning artifacts (proposal, delta specs, design, tasks) in openspec/changes/<name>/. The core planning step."
 ---
 

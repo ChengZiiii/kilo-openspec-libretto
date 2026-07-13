@@ -1,5 +1,5 @@
 ---
-name: verify-change
+name: libretto-verify-change
 description: "Three-dimension verification of a change's implementation (completeness/correctness/coherence) plus openspec validate. Dispatched to libretto-verify. Reports only."
 ---
 

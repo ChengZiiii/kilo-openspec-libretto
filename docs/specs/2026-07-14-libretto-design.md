@@ -116,7 +116,7 @@ kilo-openspec-libretto/
 │   └── lib.js                   ✅ 安装器共享逻辑（纯函数 + openspec 检测）
 ├── plugin/
 │   └── index.js                 ✅ dormant config-hook（同 superpowers，待 Kilo 支持后启用）
-├── skills/                      ✅ 8 个原创 skill 目录（裸名；libretto- 前缀由 junction 派生）
+├── skills/                      ✅ 8 个原创 skill 目录（文件夹裸名；name: 字段写 libretto- 前缀）
 │   ├── core/SKILL.md            # 显示 libretto-core（启动纪律，等价 compose-using-superpowers）
 │   ├── explore/SKILL.md         # 显示 libretto-explore
 │   ├── propose/SKILL.md         # 显示 libretto-propose
@@ -150,9 +150,9 @@ kilo-openspec-libretto/
 | 主 agent | `libretto` | 用户指定；短、好记 |
 | subagent — 实现 | `libretto-apply` | OpenSpec 的 apply 阶段 |
 | subagent — 验证 | `libretto-verify` | OpenSpec 的 verify 阶段 |
-| skill 命名空间目录（junction 名） | `libretto` | `~/.kilo/skills/libretto` junction 指向包内 `skills/`。**Kilo 用此文件夹名做前缀**派生显示名 `libretto-*`（实测 superpowers 即此机制：junction 名 `compose` → 显示 `compose-brainstorming`） |
-| 各 skill `name:`（SKILL.md frontmatter） | **裸名**：`core`、`explore`、`propose`、`apply-change`、`sync-specs`、`archive-change`、`verify-change`、`handoff` | 裸名 + 命名空间 junction 自动派生 `libretto-core`、`libretto-explore`…。**绝不**在 `name:` 里再写 `libretto-`，否则双重前缀 |
-| skill 显示名（Kilo picker） | `libretto-core`、`libretto-explore`、`libretto-propose`、`libretto-apply-change`、`libretto-sync-specs`、`libretto-archive-change`、`libretto-verify-change`、`libretto-handoff` | 由 junction 名 `libretto` + 裸 `name:` 拼接 |
+| skill 命名空间目录（junction 名） | `libretto` | `~/.kilo/skills/libretto` junction 指向包内 `skills/`。junction 名仅作磁盘挂载点，**不参与命名**——Kilo 按 SKILL.md 的 `name:` 字段注册技能（见下行）。 |
+| 各 skill `name:`（SKILL.md frontmatter） | **直写前缀**：`libretto-core`、`libretto-explore`、`libretto-propose`、`libretto-apply-change`、`libretto-sync-specs`、`libretto-archive-change`、`libretto-verify-change`、`libretto-handoff` | `name:` 字段即注册身份（实测 superpowers v0.2.0：`compose-brainstorming` 写在 `name:` 里）。文件夹名保持裸名（`core/`、`explore/`…）。 |
+| skill 显示名（Kilo picker） | 同 `name:` 字段：`libretto-core`、`libretto-explore`… | 由 `name:` 字段直接决定，非 junction 派生。 |
 | manifest 文件 | `.kilo-openspec-libretto.json` | 位于 `~/.config/kilo/`，隐藏 |
 | 环境变量前缀 | `KILO_LIBRETTO_*` | 对应 superpowers 的 `KILO_SUPERPOWERS_*` |
 | 斜杠命令 | 无 | 靠 agent picker 进流程（同 superpowers v0.1.3+） |
@@ -219,11 +219,9 @@ libretto 编排器 prompt 引用这些 skill（与 superpowers v0.1 实际行为
 
 ## 7. Skill 清单（8 个，全部原创）
 
-每个 skill 是 `<bare-name>/SKILL.md`，frontmatter 含 `name`（裸名）+ `description`，
-正文为可执行指令。所有 skill 都假设 `openspec` CLI 可用、`openspec/` 目录已 init。
-下表「显示名」= Kilo picker 里见到的名字（junction 名 `libretto` + 裸 `name:`）。
+每个 skill 文件夹是裸名，但 SKILL.md 的 `name:` 字段**直写 `libretto-` 前缀**（见 §7.1 第 1 层）。显示名由 `name:` 字段直接决定，不关 junction 名的事。下表第一列「文件夹」仅作磁盘组织参考。
 
-| 裸 `name:` | 显示名 | 触发 | 职责 | 调 openspec CLI |
+| 文件夹（裸名） | `name:` 字段 / 显示名 | 触发 | 职责 | 调 openspec CLI |
 |---|---|---|---|---|
 | `core` | `libretto-core` | 每次 libretto 会话首步 | 启动纪律、checkpoint 规则、何时加载哪个 skill、`openspec --version` 与 `openspec/` 存在性前置检查 | 是（探测） |
 | `explore` | `libretto-explore` | 用户需求不清 / libretto 判定探索态 | 无 artifact 探索对话，读 codebase，对比方案，产出结论，可转 propose | 否（只读代码） |
@@ -234,34 +232,45 @@ libretto 编排器 prompt 引用这些 skill（与 superpowers v0.1 实际行为
 | `verify-change` | `libretto-verify-change` | dispatched 给 libretto-verify | 三维度验证 + 结构校验协议 | 是（`openspec validate --json`） |
 | `handoff` | `libretto-handoff` | propose 完成后 | 输出自包含 bootstrap prompt（纯文本） | 否 |
 
-> 命名说明：skill 裸名刻意与 agent 名错开——agent 叫 `libretto-apply` / `libretto-verify`，
+> 命名说明：skill 名刻意与 agent 名错开——agent 叫 `libretto-apply` / `libretto-verify`，
 > skill 叫 `libretto-apply-change` / `libretto-verify-change`，避免 picker 里同名混淆。
 > bootstrap 用 `core` 而非 `using-libretto`，否则显示成 `libretto-using-libretto`（双重
 > libretto）；`libretto-core` 即 superpowers `compose-using-superpowers` 的等价物。
 
 ### 7.1 skill 隔离 + 前缀机制（特性 A）
 
-隔离与前缀分两层，均复刻 superpowers 实测机制：
+> ⚠ **2026-07-14 修正**：本节原以为"junction 文件夹名派生 `libretto-` 前缀"——
+> **错误**。实测 kilo-superpowers-compose v0.2.0 证实：Kilo 按 SKILL.md 的 `name:`
+> 字段注册技能身份，**认字段、不认 junction 文件夹名**。隔离靠下述三件事，缺一不可。
 
-**第 1 层 — 命名空间 junction（产生 `libretto-` 前缀）**
+隔离与前缀分三层，复刻 superpowers v0.2.0 实测机制：
 
-安装时在 `~/.kilo/skills/libretto` 建 junction（Windows）/ symlink（Unix）指向包内
-`skills/` 目录。Kilo 扫描 `~/.kilo/skills/<junction 名>/<skill>/SKILL.md` 时，用
-**junction 文件夹名**做前缀派生显示名：`libretto/` + 裸 `name: explore` →
-`libretto-explore`。实测 superpowers 即此机制（junction 名 `compose` → 显示
-`compose-brainstorming`）。skill 文件的 `name:` 字段保持**裸名**，绝不写 `libretto-`，
-否则双重前缀。用户自有的 `~/.kilo/skills/<name>` 与 `.kilocode/skills/openspec-*`
-都不受影响（路径不同）。
+**第 1 层 — `name:` 字段直写前缀（产生 `libretto-` 前缀）**
 
-**第 2 层 — agent `skill` 权限（硬隔离，可选）**
+每个 SKILL.md 的 `name:` 字段**直接写** `libretto-` 前缀（`name: libretto-explore`
+等）。Kilo 扫描 `~/.kilo/skills/libretto/<skill>/SKILL.md` 时按 `name:` 字段注册，
+于是显示名即 `libretto-explore`、`libretto-propose`…。文件夹名保持**裸名**
+（`explore/`、`propose/`…），仅作磁盘组织，不参与命名。**实测**：superpowers v0.2.0
+的 `skills/brainstorming/SKILL.md` 里 `name:` 即为 `compose-brainstorming`（非裸名），
+安装后 picker 显示 `compose-brainstorming`。agent 引用 skill 必须用带前缀的名
+（`libretto-core` 等），否则调不到。
+
+**第 2 层 — 全局 `permission.skill['libretto-*']: 'deny'`（模型侧硬隔离）**
+
+安装器向 `kilo.jsonc` 写入 `permission.skill['libretto-*'] = 'deny'`，且**置于 skill
+对象末尾**。Kilo 的 `Permission.evaluate` 用 `findLast` 取末尾匹配键，故末尾的
+`libretto-*: deny` 压过默认的 `*: allow`，使**其它 agent / 默认模型不会自动加载**
+libretto 技能。见 `bin/lib.js` 的 `ensureSkillDeny` / `removeSkillDeny`（install 写入、
+uninstall 移除，均幂等且保留用户其它 skill 规则）。标量 `skill` 值会被升级为对象、
+原值保留于 `'*'` 键。
+
+**第 3 层 — 每个 libretto agent 的 `permission.skill['libretto-*']: 'allow'`（解锁自身）**
 
 三个 libretto agent 的 frontmatter 带 `permission.skill: { "libretto-*": "allow" }`，
-仅允许 libretto 系 agent 调用 `libretto-*` skill。可选加固：全局 kilo.jsonc 加
-`"skill": { "libretto-*": "deny" }`（superpowers 用户机器上即如此配置）。
-若 Kilo 当前版本不识别 frontmatter 里的 `permission.skill` 键（P2 实测确认），降级为
-**软隔离**——只有 libretto 编排器 prompt 引用这些 skill（与 superpowers v0.1 实际
-行为一致）。安装器 v0.1 **不**自动改写全局 kilo.jsonc 的 skill 权限（避免动用户
-配置），仅在文档说明可选加固。
+作为第 2 层全局 deny 的**白名单**——只有 libretto 系 agent 被允许调用 `libretto-*`
+skill（per-agent allow 在该 agent 作用域内压过全局 deny）。三者配合 =
+"全局 deny 挡住所有人，仅 libretto 自身 agent 显式 allow 放行"。用户自有的
+`~/.kilo/skills/<name>` 与项目内 `.kilocode/skills/openspec-*` 都不受影响。
 
 ### 7.2 跳转新会话（特性 B）
 
@@ -304,10 +313,11 @@ openspec 校验。
 - 打补丁前备份 `kilo.jsonc`，解析失败时恢复（退出码 2）。
 - junction（Windows）/ symlink（Unix）创建技能链接，失败回退递归复制。
   **junction 名固定为 `libretto`**（`~/.kilo/skills/libretto` → 包内 `skills/`）——
-  Kilo 用此文件夹名派生 `libretto-*` 显示前缀（见 §7.1 第 1 层）。lib.js 中
-  `skillLink = path.join(skillsDir, 'libretto')`。
+  junction 仅作磁盘挂载点，**不参与命名**（Kilo 按 `name:` 字段注册，见 §7.1 第 1 层）。
+  lib.js 中 `skillLink = path.join(skillsDir, 'libretto')`。
 - manifest 记录：name / version / pkgRoot / skillsSrc / skillsLink（=
-  `~/.kilo/skills/libretto`）/ skillsLinkType / skillsPathsEntry / agents。
+  `~/.kilo/skills/libretto`）/ skillsLinkType / **permissionKey**（`libretto-*`）/
+  **skillPrefix**（`libretto-`）/ skillsPathsEntry / agents。
 
 ### 8.2 libretto 新增：openspec CLI 检测
 

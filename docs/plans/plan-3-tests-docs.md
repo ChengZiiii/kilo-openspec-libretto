@@ -1,5 +1,9 @@
 # Plan 3 — 测试、文档与最终验证（Task 13–17）
 
+> ⚠️ **历史归档（2026-07-14 已被超越）**：本计划含"skill name 必须裸名"等错误验收标准，
+> 且不含 `ensureSkillDeny`/`removeSkillDeny` 的模型侧隔离测试。实际实现已修正并新增
+> permission deny 测试套件（见 `test/installer.test.js` 与 spec §7.1）。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `compose-subagent-driven-development` or `compose-executing-plans`. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** 编写零依赖测试套件（installer + plugin）、项目文档（DESIGN/INSTALLER/AGENTS/REFERENCES）、README 与 repo 级 AGENTS.md，并跑通最终验证（`node --test` + `npm pack` + 隔离 install 往返）。

@@ -258,3 +258,132 @@ test('runInstall: openspec CLI 不存在时不阻断安装（SKIP_CHECK 关闭�
     assert.ok(fs.existsSync(ctx.skillLink), 'skill 链接仍应创建');
   } finally { rmrf(home); }
 });
+
+// ─── 模型侧隔离：permission.skill['libretto-*']='deny' ────────────────
+// 对齐 kilo-superpowers-compose v0.2.0 的隔离机制：Kilo 的 Permission.evaluate
+// 用 findLast 取末尾匹配键，故把 'libretto-*': 'deny' 放到 skill 对象末尾，
+// 压过默认的 '*': 'allow'，使其它 agent / 默认模型不会自动加载 libretto 技能。
+// 仅 libretto 自身的 agent 通过显式 skill 调用使用它们。
+
+test('常量: SKILL_PERMISSION_KEY 与 SKILL_PREFIX', () => {
+  assert.equal(lib.SKILL_PERMISSION_KEY, 'libretto-*');
+  assert.equal(lib.SKILL_PREFIX, 'libretto-');
+});
+
+test('ensureSkillDeny: 无 permission 时新增 deny 键', () => {
+  const cfg = {};
+  const changed = lib.ensureSkillDeny(cfg);
+  assert.equal(changed, true);
+  assert.equal(cfg.permission.skill['libretto-*'], 'deny');
+});
+
+test('ensureSkillDeny: 已是 deny 时幂等（不改、不重复）', () => {
+  const cfg = { permission: { skill: { 'libretto-*': 'deny' } } };
+  const changed = lib.ensureSkillDeny(cfg);
+  assert.equal(changed, false);
+  assert.deepEqual(cfg.permission.skill, { 'libretto-*': 'deny' });
+});
+
+test('ensureSkillDeny: 标量 skill 升级为对象并保留 * 原值', () => {
+  const cfg = { permission: { skill: 'ask' } };
+  const changed = lib.ensureSkillDeny(cfg);
+  assert.equal(changed, true);
+  assert.equal(cfg.permission.skill['*'], 'ask', '原标量值应保留到 * 键');
+  assert.equal(cfg.permission.skill['libretto-*'], 'deny');
+});
+
+test('ensureSkillDeny: 保留用户其它 skill 规则', () => {
+  const cfg = { permission: { skill: { 'my-tool-*': 'allow', '*': 'ask' } } };
+  lib.ensureSkillDeny(cfg);
+  assert.equal(cfg.permission.skill['my-tool-*'], 'allow');
+  assert.equal(cfg.permission.skill['*'], 'ask');
+  assert.equal(cfg.permission.skill['libretto-*'], 'deny');
+});
+
+test('ensureSkillDeny: deny 键位于 skill 对象末尾（findLast 依赖）', () => {
+  const cfg = { permission: { skill: { 'a': 'allow', 'libretto-*': 'deny', 'b': 'allow' } } };
+  lib.ensureSkillDeny(cfg); // 已存在但不在末尾 → 应移到末尾
+  const keys = Object.keys(cfg.permission.skill);
+  assert.equal(keys[keys.length - 1], 'libretto-*', 'deny 键必须在末尾才能压过 *');
+});
+
+test('removeSkillDeny: 移除 deny 键', () => {
+  const cfg = { permission: { skill: { 'libretto-*': 'deny', '*': 'ask' } } };
+  const removed = lib.removeSkillDeny(cfg);
+  assert.equal(removed, true);
+  assert.equal(cfg.permission.skill['libretto-*'], undefined);
+  assert.equal(cfg.permission.skill['*'], 'ask', '其它规则保留');
+});
+
+test('removeSkillDeny: 移除后容器空则清理 skill / permission', () => {
+  const cfg = { permission: { skill: { 'libretto-*': 'deny' } } };
+  lib.removeSkillDeny(cfg);
+  // permission 整个被删（含 skill），故先断言 permission 为 undefined
+  assert.equal(cfg.permission, undefined, '空 permission 应删除（skill 随之消失）');
+});
+
+test('removeSkillDeny: 无 deny 键时返回 false 不动结构', () => {
+  const cfg = { permission: { skill: { '*': 'ask' } } };
+  const removed = lib.removeSkillDeny(cfg);
+  assert.equal(removed, false);
+  assert.deepEqual(cfg.permission.skill, { '*': 'ask' });
+});
+
+test('removeSkillDeny: 无 permission 时安全返回 false', () => {
+  const cfg = {};
+  assert.equal(lib.removeSkillDeny(cfg), false);
+});
+
+// ─── 集成：install 写 deny / uninstall 移 deny ─────────────────────────
+test('集成：install 后 kilo.jsonc 含 libretto-*: deny', () => {
+  const home = mkTempHome();
+  try {
+    const ctx = ctxFor(home, { KILO_LIBRETTO_SKIP_OPENSPEC_CHECK: '1' });
+    assert.equal(lib.runInstall({ context: ctx }), EXIT.OK);
+    const cfg = lib.readJsonc(ctx.configFile);
+    assert.equal(cfg.permission.skill['libretto-*'], 'deny', 'install 应写入模型侧 deny');
+    // manifest 应记录隔离相关字段
+    const m = lib.readManifest(ctx.manifestFile);
+    assert.equal(m.permissionKey, 'libretto-*');
+    assert.equal(m.skillPrefix, 'libretto-');
+  } finally { rmrf(home); }
+});
+
+test('集成：uninstall 后 kilo.jsonc 不再含 libretto-* deny', () => {
+  const home = mkTempHome();
+  try {
+    const ctx = ctxFor(home, { KILO_LIBRETTO_SKIP_OPENSPEC_CHECK: '1' });
+    lib.runInstall({ context: ctx });
+    lib.runUninstall({ context: ctx });
+    const cfg = lib.readJsonc(ctx.configFile);
+    assert.equal(
+      (cfg.permission && cfg.permission.skill && cfg.permission.skill['libretto-*']) || undefined,
+      undefined,
+      'uninstall 应移除 deny 键'
+    );
+  } finally { rmrf(home); }
+});
+
+test('集成：install/uninstall 保留用户已有的 skill 权限规则', () => {
+  const home = mkTempHome();
+  try {
+    const ctx = ctxFor(home, { KILO_LIBRETTO_SKIP_OPENSPEC_CHECK: '1' });
+    fs.mkdirSync(ctx.configDir, { recursive: true });
+    fs.writeFileSync(
+      ctx.configFile,
+      JSON.stringify({ permission: { skill: { 'my-tool-*': 'allow', '*': 'ask' } } }, null, 2),
+      'utf8'
+    );
+    lib.runInstall({ context: ctx });
+    let cfg = lib.readJsonc(ctx.configFile);
+    assert.equal(cfg.permission.skill['my-tool-*'], 'allow');
+    assert.equal(cfg.permission.skill['*'], 'ask');
+    assert.equal(cfg.permission.skill['libretto-*'], 'deny');
+
+    lib.runUninstall({ context: ctx });
+    cfg = lib.readJsonc(ctx.configFile);
+    assert.equal(cfg.permission.skill['my-tool-*'], 'allow', '用户规则卸载后必须保留');
+    assert.equal(cfg.permission.skill['*'], 'ask');
+    assert.equal(cfg.permission.skill['libretto-*'], undefined);
+  } finally { rmrf(home); }
+});

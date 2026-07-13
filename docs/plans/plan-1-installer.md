@@ -1,5 +1,11 @@
 # Plan 1 — 安装器与插件模块（Task 1–6）
 
+> ⚠️ **历史归档（2026-07-14 已被超越）**：本计划基于"junction 文件夹名派生 `libretto-`
+> 前缀"的错误前提。**实际机制**（对齐 kilo-superpowers-compose v0.2.0，见
+> `docs/specs/2026-07-14-libretto-design.md` §7.1）为：SKILL.md 的 `name:` 字段直写
+> `libretto-` 前缀 + 安装器写全局 `permission.skill['libretto-*']: 'deny'` + 每个 agent
+> frontmatter 带 `permission.skill['libretto-*']: 'allow'`。下列相关步骤以历史为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `compose-subagent-driven-development` or `compose-executing-plans` to implement task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** 构建 libretto 的 npm 包骨架与安装器（`bin/lib.js` + 入口垫片 + dormant plugin 模块），使其能 `npm pack` 并在隔离 `KILO_HOME` 里跑通 install/uninstall。

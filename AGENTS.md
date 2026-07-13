@@ -27,11 +27,18 @@
 
 ## 关键约束（已决定 —— 不要随意更改）
 
-- **skill 裸名 + junction 派生前缀**：`name:` 字段保持裸名（`explore`、
-  `propose`…），`libretto-` 前缀由 `~/.kilo/skills/libretto` junction 文件夹名
-  派生。绝不手写 `libretto-` 前缀。
+- **skill 隔离 = name: 前缀 + permission deny（对齐 kilo-superpowers-compose v0.2.0）**：
+  每个 SKILL.md 的 `name:` 字段**直接写 `libretto-` 前缀**（`libretto-explore`、
+  `libretto-propose`…）。Kilo 按 `name:` 字段注册技能身份，**认字段、不认 junction
+  文件夹名**；文件夹名保持裸名（`explore/`），仅作磁盘组织。agent 引用 skill 时必须用
+  前缀名（`libretto-core` 等），否则调不到。第二套隔离：安装器向 kilo.jsonc 写入
+  `permission.skill['libretto-*'] = 'deny'`（置于 skill 对象末尾，靠 Kilo
+  `Permission.evaluate` 的 `findLast` 压过默认 `*: allow`），使其它 agent / 默认模型
+  不会自动加载 libretto 技能；libretto 自身 agent 仍通过显式 skill 调用使用它们。
+  见 `bin/lib.js` 的 `ensureSkillDeny` / `removeSkillDeny`。
 - **强依赖 openspec CLI**：skills 调 `openspec ... --json` 做重活；不重造 delta
-  合并/校验。
+  合并/校验。安装时检测 `openspec --version`，缺失只警告不阻断（设
+  `KILO_LIBRETTO_SKIP_OPENSPEC_CHECK=1` 跳过）。
 - **零第三方依赖**：仅用 `node:*`。
 - **跨平台路径**：一律 `path.join`，绝不手拼反斜杠。
 - **不自动 postinstall**：安装是显式的（`kilo-openspec-libretto install`）。
@@ -46,5 +53,6 @@
 | 主 agent | `libretto`（`mode: primary`） |
 | subagent — 实现 | `libretto-apply` |
 | subagent — 验证 | `libretto-verify` |
-| skill 命名空间 | `libretto`（junction） |
+| skill 命名空间 | `libretto-*`（`name:` 前缀；文件夹裸名 + junction 名 `libretto`） |
+| permission deny 键 | `libretto-*` |
 | manifest | `.kilo-openspec-libretto.json` |

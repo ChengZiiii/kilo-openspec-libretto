@@ -3,6 +3,9 @@ description: "The OpenSpec spec-driven development workflow."
 mode: primary
 color: "#8B5CF6"
 steps: 100
+permission:
+  skill:
+    "libretto-*": "allow"
 ---
 
 # Libretto Orchestrator

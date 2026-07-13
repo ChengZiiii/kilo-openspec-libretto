@@ -27,6 +27,18 @@ export const EXIT = Object.freeze({
 
 export const MANIFEST_NAME = '.kilo-openspec-libretto.json';
 
+// libretto 技能命名空间前缀与权限键（对齐 kilo-superpowers-compose v0.2.0）。
+// 隔离靠两套机制：
+//   1. 每个 SKILL.md 的 name: 字段直接写 libretto- 前缀（见 skills/*/SKILL.md）。
+//      Kilo 按 name: 字段注册技能身份，认字段、不认 junction 文件夹名。
+//   2. permission.skill['libretto-*'] = 'deny'（模型侧隔离的 deny 侧，见下方
+//      ensureSkillDeny）。Kilo 的 Permission.evaluate 用 findLast 取末尾匹配键，
+//      把 'libretto-*': 'deny' 放到 skill 对象末尾即可压过默认 '*': 'allow'，
+//      使其它 agent / 默认模型不会自动加载 libretto 技能；libretto 自身 agent
+//      仍通过显式 skill 调用使用它们。
+export const SKILL_PREFIX = 'libretto-';
+export const SKILL_PERMISSION_KEY = 'libretto-*';
+
 const noop = () => {};
 
 // ─── 纯函数 / 配置解析 ─────────────────────────────────────────────────
@@ -48,7 +60,10 @@ export function resolvePaths(home) {
     configFile: path.join(configDir, 'kilo.jsonc'),
     agentsDir: path.join(configDir, 'agent'),
     skillsDir,
-    // junction 名固定为 libretto —— Kilo 用此文件夹名派生 libretto-* 显示前缀
+    // junction 名固定为 libretto。注意：Kilo 按 SKILL.md 的 name: 字段注册技能身份，
+    // 不认 junction 文件夹名；前缀隔离靠 skills/*/SKILL.md 里写死的 libretto- 前缀
+    // + permission.skill['libretto-*']: 'deny'（见 ensureSkillDeny）。此 junction
+    // 仅用于把包内 skills 目录挂到 ~/.kilo/skills/ 下供 Kilo 扫描。
     skillLink: path.join(skillsDir, 'libretto'),
     manifestFile: path.join(configDir, MANIFEST_NAME),
   };
@@ -79,6 +94,40 @@ export function normalizePath(p) {
 export function skillsPathsContains(paths, target) {
   const t = normalizePath(target);
   return Array.isArray(paths) && paths.some((p) => normalizePath(p) === t);
+}
+
+// 确保 config.permission.skill[SKILL_PERMISSION_KEY] = 'deny'，且该键位于对象末尾
+// （依赖 kilo Permission.evaluate 的 findLast：末尾的 libretto-*:deny 才能赢过 *）。
+// 标量 skill 升级为对象，原值保留于 '*' 键。返回是否发生改动。
+// 注意：即便值已是 'deny'，只要它不在末尾（被 '*':allow 等盖在后面），也会重排到末尾
+// —— findLast 语义要求 deny 必须是最后一个键才能真正生效。
+export function ensureSkillDeny(config, key = SKILL_PERMISSION_KEY) {
+  config.permission = config.permission || {};
+  let skill = config.permission.skill;
+  if (typeof skill === 'string') skill = { '*': skill };
+  if (skill === undefined || skill === null) skill = {};
+  skill = { ...skill };
+  const keys = Object.keys(skill);
+  const lastKey = keys[keys.length - 1];
+  const needsMove = skill[key] !== 'deny' || lastKey !== key;
+  if (needsMove) {
+    delete skill[key];
+    skill[key] = 'deny'; // 删后重插末尾，保证顺序
+  }
+  config.permission.skill = skill;
+  return needsMove;
+}
+
+// 移除 config.permission.skill[SKILL_PERMISSION_KEY]；删后容器若空则一并清理。
+// 绝不动用户其它 skill / permission 规则。返回是否发生移除。
+export function removeSkillDeny(config, key = SKILL_PERMISSION_KEY) {
+  if (!config.permission || !config.permission.skill) return false;
+  const skill = config.permission.skill;
+  if (!(key in skill)) return false;
+  delete skill[key];
+  if (Object.keys(skill).length === 0) delete config.permission.skill;
+  if (config.permission && Object.keys(config.permission).length === 0) delete config.permission;
+  return true;
 }
 
 export function findPackageRoot(startDir) {
@@ -330,7 +379,9 @@ export function runInstall(opts = {}) {
     config.skills.paths.push(srcSkills);
     added = true;
   }
-  if (added && !dryRun) writeJson(ctx.configFile, config);
+  // 6b. 确保 permission.skill['libretto-*']='deny'（模型侧隔离的 deny 侧，幂等）
+  const permChanged = ensureSkillDeny(config);
+  if ((added || permChanged) && !dryRun) writeJson(ctx.configFile, config);
 
   // 7. 写清单
   writeManifest(
@@ -342,6 +393,8 @@ export function runInstall(opts = {}) {
       skillsSrc: srcSkills,
       skillsLink: ctx.skillLink,
       skillsLinkType: linkRes.type,
+      permissionKey: SKILL_PERMISSION_KEY,
+      skillPrefix: SKILL_PREFIX,
       skillsPathsEntry: srcSkills,
       agents: installedAgentPaths,
     },
@@ -434,8 +487,10 @@ export function runUninstall(opts = {}) {
       );
     }
     removedEntries = before - config.skills.paths.length;
-    if (!dryRun) writeJson(ctx.configFile, config);
   }
+  // 同步移除 permission.skill 的 libretto-* 键（精确，保留用户其它规则）
+  const permRemoved = removeSkillDeny(config);
+  if ((removedEntries > 0 || permRemoved) && !dryRun) writeJson(ctx.configFile, config);
 
   // 4. 移除清单
   removeManifest(ctx.manifestFile, { dryRun, log });

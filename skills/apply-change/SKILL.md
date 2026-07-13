@@ -1,5 +1,5 @@
 ---
-name: apply-change
+name: libretto-apply-change
 description: "Implement tasks from a change's tasks.md against its spec deltas. Write code, run tests, check off items. Dispatched to libretto-apply."
 ---
 

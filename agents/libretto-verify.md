@@ -1,6 +1,9 @@
 ---
 description: "Verification subagent for the libretto workflow. Three-dimension review (completeness/correctness/coherence) + openspec validate. Reports only; never edits code."
 mode: subagent
+permission:
+  skill:
+    "libretto-*": "allow"
 ---
 
 # Verifier

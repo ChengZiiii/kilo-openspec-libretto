@@ -1,5 +1,5 @@
 ---
-name: archive-change
+name: libretto-archive-change
 description: "Archive a completed change: validate, sync delta specs, move to changes/archive/YYYY-MM-DD-<name>/. Final step of the workflow."
 ---
 

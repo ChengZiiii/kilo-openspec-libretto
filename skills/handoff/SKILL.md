@@ -1,5 +1,5 @@
 ---
-name: handoff
+name: libretto-handoff
 description: "Emit a self-contained bootstrap prompt for the user to paste into a new libretto session, resuming from the apply phase. Zero files written."
 ---
 

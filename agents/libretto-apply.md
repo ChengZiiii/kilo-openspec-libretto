@@ -1,6 +1,9 @@
 ---
 description: "Implementation subagent for the libretto workflow. Implements tasks from a change's tasks.md against its spec deltas, via TDD where applicable."
 mode: subagent
+permission:
+  skill:
+    "libretto-*": "allow"
 ---
 
 # Implementation Worker

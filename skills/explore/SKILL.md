@@ -1,5 +1,5 @@
 ---
-name: explore
+name: libretto-explore
 description: "No-stakes exploration before committing to a change. Reads codebase, compares options, shapes a plan. Creates no artifacts. Use when requirements are unclear."
 ---
 
@@ -33,7 +33,7 @@ description: "No-stakes exploration before committing to a change. Reads codebas
 5. When the user is ready to commit, transition:
 
 ```
-Ready to turn this into a change? Run /libretto-propose <change-name>.
+Ready to turn this into a change? Load the `libretto-propose` skill for <change-name>.
 ```
 
 ## Key principle

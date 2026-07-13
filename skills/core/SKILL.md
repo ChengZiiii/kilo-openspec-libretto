@@ -1,5 +1,5 @@
 ---
-name: core
+name: libretto-core
 description: "Bootstrap discipline for libretto. Load this FIRST every session. Checks openspec CLI + openspec/ dir, establishes checkpoint rules and skill load order."
 ---
 
@@ -70,9 +70,9 @@ explore → propose → [review] → apply → verify → sync → archive
  (opt)    (plan)    (user)    (code)   (check)  (merge) (file away)
 ```
 
-- `explore`: no-stakes thinking, no artifacts
-- `propose`: creates `openspec/changes/<name>/` with proposal + specs(deltas) + design + tasks
-- `apply`: implements tasks.md, checks off `[x]`
-- `verify`: three-dimension check before archiving
-- `sync`: merges delta specs into `openspec/specs/`
-- `archive`: moves change to `changes/archive/YYYY-MM-DD-<name>/`
+- `libretto-explore`: no-stakes thinking, no artifacts
+- `libretto-propose`: creates `openspec/changes/<name>/` with proposal + specs(deltas) + design + tasks
+- `libretto-apply-change`: implements tasks.md, checks off `[x]`
+- `libretto-verify-change`: three-dimension check before archiving
+- `libretto-sync-specs`: merges delta specs into `openspec/specs/`
+- `libretto-archive-change`: moves change to `changes/archive/YYYY-MM-DD-<name>/`
