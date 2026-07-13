@@ -1,6 +1,6 @@
 {
   "name": "kilo-openspec-libretto",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "将 OpenSpec 工作流打包为 Kilo 插件：一个 libretto 编排器代理、2 个子代理与 8 个技能，通过 libretto 代理选择器直接进入完整工作流，一条命令安装。强依赖 @fission-ai/openspec CLI。",
   "keywords": [
     "kilo",
