@@ -1,0 +1,50 @@
+# Publish to npm via Trusted Publishing (OIDC).
+# Trigger: push tag matching v*.
+# Prerequisite: trusted publisher for ChengZiiii/kilo-openspec-libretto / release.yml
+# configured at https://www.npmjs.com/package/kilo-openspec-libretto/settings
+# (allowed action: npm publish).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Defaults: read-only. Override at job level to grant OIDC for npm trusted publishing.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # Required for npm trusted publishing (OIDC)
+    environment: npm    # Optional: tie to GitHub Environment for extra approval (optional)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          # Never use cache in release builds — provenance must reflect what was just built.
+          package-manager-cache: false
+
+      - name: Install deps (zero deps — does nothing if package-lock absent)
+        run: npm install --no-audit --no-fund --silent
+        continue-on-error: true   # libretto has zero deps; treat EUSAGE (no lock) as ok
+
+      - name: Test
+        run: npm test
+
+      - name: Publish (OIDC)
+        run: npm publish
+        env:
+          # Forces OIDC auto-detection (works without this too; explicit for clarity).
+          NPM_CONFIG_PROVENANCE: true
