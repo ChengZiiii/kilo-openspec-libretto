@@ -227,3 +227,155 @@ export function detectOpenSpecCli() {
     return { ok: false };
   }
 }
+
+// ─── 编排：安装 ───────────────────────────────────────────────────────
+// 返回退出码（0 成功）。失败路径返回对应码并已做清理（如恢复备份）。
+export function runInstall(opts = {}) {
+  const ctx = opts.context || buildContext();
+  const log = makeLogger(ctx.VERBOSE);
+  const dryRun = ctx.DRY_RUN;
+
+  const binDir = path.dirname(fileURLToPath(import.meta.url));
+  const root = opts.pkgRoot || path.resolve(binDir, '..');
+
+  const srcSkills = path.join(root, 'skills');
+  const srcAgents = path.join(root, 'agents');
+
+  let pkg;
+  try {
+    pkg = readPackageJson(root);
+  } catch (e) {
+    console.error(`✗ 无法读取 package.json: ${e.message}`);
+    return EXIT.ERROR;
+  }
+  const version = pkg.version || '0.0.0';
+
+  log('package root', root);
+  log('config dir', ctx.configDir);
+
+  // 0. openspec CLI 检测（不阻断安装）
+  let openspecWarning = false;
+  if (!ctx.SKIP_OPENSPEC_CHECK) {
+    const detection = detectOpenSpecCli();
+    if (detection.ok) {
+      console.log(`  openspec CLI: 检测到 ${detection.version || '(未知版本)'}`);
+    } else {
+      openspecWarning = true;
+    }
+  }
+
+  // 1. 确保目标目录
+  for (const d of [ctx.configDir, ctx.agentsDir, ctx.skillsDir]) {
+    try {
+      ensureDir(d, { dryRun, log });
+    } catch (e) {
+      console.error(`✗ 无法创建目录 ${d}: ${e.message}`);
+      return EXIT.NOT_WRITABLE;
+    }
+  }
+
+  // 2. 备份 kilo.jsonc
+  const bak = backupConfig(ctx.configFile, { dryRun, log });
+
+  // 3. 预读并校验 kilo.jsonc（解析失败则恢复备份并退出 2）
+  log('reading', ctx.configFile);
+  const config = readJsonc(ctx.configFile);
+  if (config.__parseError) {
+    if (bak && !dryRun) {
+      try {
+        fs.copyFileSync(bak, ctx.configFile);
+      } catch (e) {
+        log('恢复备份失败:', e.message);
+      }
+    }
+    console.error(`✗ kilo.jsonc 解析失败: ${config.__parseError}（已从备份恢复）`);
+    console.error('  注意：本安装器仅支持 // 行注释；块注释 /* */ 不被处理。');
+    return EXIT.PARSE_ERROR;
+  }
+
+  // 4. 创建技能链接（junction 名 libretto）
+  if (!fs.existsSync(srcSkills)) {
+    console.error(`✗ 找不到技能源目录: ${srcSkills}`);
+    return EXIT.ERROR;
+  }
+  const linkRes = makeSkillsLink(srcSkills, ctx.skillLink, { dryRun, log });
+  if (!linkRes.ok) {
+    console.error(`✗ ${linkRes.error}`);
+    return EXIT.LINK_FAILED;
+  }
+
+  // 5. 复制 agents
+  const agentFiles = listMdFiles(srcAgents);
+  const installedAgentPaths = [];
+  for (const f of agentFiles) {
+    const dst = path.join(ctx.agentsDir, f.name);
+    log('copy agent', f.abs, '->', dst);
+    if (!dryRun) {
+      try {
+        fs.mkdirSync(ctx.agentsDir, { recursive: true });
+        fs.copyFileSync(f.abs, dst);
+      } catch (e) {
+        console.error(`✗ 复制 agent 失败 ${f.name}: ${e.message}`);
+        return EXIT.NOT_WRITABLE;
+      }
+    }
+    installedAgentPaths.push(dst);
+  }
+
+  // 6. 追加 skills.paths
+  config.skills = config.skills || {};
+  config.skills.paths = config.skills.paths || [];
+  let added = false;
+  if (!skillsPathsContains(config.skills.paths, srcSkills)) {
+    config.skills.paths.push(srcSkills);
+    added = true;
+  }
+  if (added && !dryRun) writeJson(ctx.configFile, config);
+
+  // 7. 写清单
+  writeManifest(
+    ctx.manifestFile,
+    {
+      name: 'kilo-openspec-libretto',
+      version,
+      pkgRoot: root,
+      skillsSrc: srcSkills,
+      skillsLink: ctx.skillLink,
+      skillsLinkType: linkRes.type,
+      skillsPathsEntry: srcSkills,
+      agents: installedAgentPaths,
+    },
+    { dryRun, log }
+  );
+
+  // 8. 汇总
+  const skillCount = countSkills(srcSkills);
+  console.log('✓ kilo-openspec-libretto 已安装');
+  console.log(`  技能: ${skillCount} 个 -> ${ctx.skillLink} (${linkRes.type})`);
+  if (linkRes.fallback) {
+    console.log(`  注意: 链接创建失败，已回退为递归复制（${linkRes.fallback}）`);
+  }
+  console.log(`  代理: ${agentFiles.map((f) => f.name).join(', ') || '(无)'}`);
+  console.log(`  kilo.jsonc: skills.paths ${added ? '已新增条目' : '已存在（幂等跳过）'}`);
+  if (openspecWarning) {
+    console.log('');
+    console.log('  ⚠ 未检测到 openspec CLI。libretto 运行时需要它。请运行：');
+    console.log('    npm install -g @fission-ai/openspec');
+    console.log('  安装后重启 Kilo。');
+    console.log('  （设 KILO_LIBRETTO_SKIP_OPENSPEC_CHECK=1 可跳过此检测）');
+  }
+  console.log('');
+  console.log('  请重启 Kilo CLI / VS Code 扩展以加载。');
+  return EXIT.OK;
+}
+
+function countSkills(srcSkills) {
+  try {
+    return fs
+      .readdirSync(srcSkills, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .length;
+  } catch {
+    return 0;
+  }
+}
