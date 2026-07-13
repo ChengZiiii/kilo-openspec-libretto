@@ -1,0 +1,24 @@
+NOTICE
+=======
+
+kilo-openspec-libretto
+----------------------
+
+This package (`kilo-openspec-libretto`) is licensed under the MIT License
+(see `LICENSE`). Copyright (c) 2026 ChengZiiii.
+
+This package has a runtime dependency on the OpenSpec CLI:
+
+    @fission-ai/openspec
+    Source : https://github.com/Fission-AI/OpenSpec
+    License: MIT (Copyright (c) OpenSpec Contributors)
+
+The `skills/`, `agents/`, `bin/`, and `plugin/` contents of this package are
+all original work, authored specifically for libretto. They are NOT vendored
+from OpenSpec — libretto's skills call the `openspec` CLI at runtime via
+`bash` for validation, status, archiving, and other operations.
+
+No OpenSpec source code is included in this package. Users must install
+`@fission-ai/openspec` separately:
+
+    npm install -g @fission-ai/openspec
