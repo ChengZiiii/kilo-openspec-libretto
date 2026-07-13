@@ -458,7 +458,7 @@ npm 命名插件（superpowers 已实测，见其 DESIGN §10 Q5）。README 明
 ## 16. 参考资料
 
 - 上游工作流：https://github.com/Fission-AI/OpenSpec （MIT，v1.6.0）
-- 打包范本：`kilo-superpowers-compose`（本机 `C:\Users\Soren\Documents\kilo-superpowers-compose`）
+- 打包范本：`kilo-superpowers-compose`（同级仓库，`docs/...` 之外另址托管）
 - OpenSpec 概念：`docs/concepts.md`、`docs/overview.md`、`docs/commands.md`
 - OpenSpec CLI 契约：`docs/agent-contract.md`（`--json` 输出 shape）
 - Kilo 架构：`~/.config/kilo/`、`~/.kilo/`、`.kilo/`；CLI 与 VS Code 扩展共享配置
