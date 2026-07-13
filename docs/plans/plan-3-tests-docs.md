@@ -736,7 +736,7 @@ OpenSpec workflow.
 
 ```bash
 cd your-project
-openspec init
+openspec init --tools none
 ```
 
 ## What gets installed

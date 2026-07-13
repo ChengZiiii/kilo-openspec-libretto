@@ -95,7 +95,9 @@
 
 **关键洞察**：Kilo CLI 与 Kilo Code 共享 `~/.config/kilo/` 与 `~/.kilo/`，故一处安装
 覆盖两个客户端（同 superpowers，已验证）。OpenSpec 的 `openspec/` 工作区目录由
-OpenSpec CLI 的 `openspec init` 创建，**不在 libretto 安装范围内**——职责分离。
+OpenSpec CLI 的 `openspec init --tools none` 创建（见 §10），**不在 libretto 安装
+范围内**——职责分离。`--tools none` 跳过 openspec 1.6.0 的 per-tool skill/command
+adapter（详见 §14 风险登记）。
 
 ---
 
@@ -270,7 +272,9 @@ uninstall 移除，均幂等且保留用户其它 skill 规则）。标量 `skil
 作为第 2 层全局 deny 的**白名单**——只有 libretto 系 agent 被允许调用 `libretto-*`
 skill（per-agent allow 在该 agent 作用域内压过全局 deny）。三者配合 =
 "全局 deny 挡住所有人，仅 libretto 自身 agent 显式 allow 放行"。用户自有的
-`~/.kilo/skills/<name>` 与项目内 `.kilocode/skills/openspec-*` 都不受影响。
+`~/.kilo/skills/<name>` 不受影响；项目内 openspec init 不会污染
+`~/.kilo/skills/`（libretto 强制 `--tools none`，openspec 1.6.0 仍按重构前布局
+写 `.kilocode/skills/openspec-*`，但该目录已被当前 kilo CLI ≥ 7.4 弃扫）。
 
 ### 7.2 跳转新会话（特性 B）
 
@@ -373,15 +377,23 @@ npm 命名插件（superpowers 已实测，见其 DESIGN §10 Q5）。README 明
 
 ## 10. per-project 初始化
 
-`openspec/` 工作区目录由 OpenSpec CLI 的 `openspec init` 创建，**不在 libretto
-安装范围内**。`libretto-core` skill 首次在项目里跑时：
+`openspec/` 工作区目录由 OpenSpec CLI 的 `openspec init --tools none` 创建，
+**不在 libretto 安装范围内**。`libretto-core` skill 首次在项目里跑时：
 
 1. 检测 `openspec/` 是否存在于当前工作区。
-2. 不存在 → 提示用户运行 `openspec init`（征得同意后可代跑）。
+2. 不存在 → 提示用户运行 `openspec init --tools none`（征得同意后可代跑）。
 3. 存在 → 继续。
 
-职责分离：libretto 全局装一次；per-project 初始化交给 OpenSpec CLI（它才知道用户
-要给哪些 tool 生成 skill 文件、用哪个 profile）。
+**必须用 `--tools none`**：openspec 1.6.0 的 per-tool adapter（`kilocode` 等）
+按重构前约定把 6 个 skill + 6 个 command 写到 `.kilocode/skills/openspec-*/` 与
+`.kilocode/workflows/opsx-*.md`，但 kilo CLI ≥ 7.4（opencode 重构后）已不再
+扫描 `.kilocode/`——这些产物对 libretto 用户等于零输出（写完即作废），唯一风险
+是污染项目目录。`--tools none` 只创建 `openspec/{config.yaml, changes/, specs/}`
+三个东西，刚好是 libretto-propose / apply / sync / verify / archive 需要的
+工作区。
+
+职责分离：libretto 全局装一次；per-project 初始化交给 OpenSpec CLI，但只取其
+工作区骨架，不接受 per-tool 副作用。
 
 ---
 
@@ -436,7 +448,7 @@ npm 命名插件（superpowers 已实测，见其 DESIGN §10 Q5）。README 明
 |---|---|---|---|
 | 用户未装 `openspec` CLI 就用 libretto | 高 | skill 调 CLI 全失败 | install 时检测 + 醒目提示；`libretto-core` 运行时再探测并指引 |
 | OpenSpec CLI 输出 schema 在大版本间漂移 | 中 | skill 解析 `--json` 出错 | `NOTICE` / README 锁定推荐 `@fission-ai/openspec` 版本范围；skill 对未知字段宽容（只取所需键） |
-| `openspec init` 生成的项目级 skill 与 libretto 全局 skill 命名冲突 | 低 | 都叫 propose 等 | libretto skill 在 `libretto/` 命名空间下，OpenSpec 的在 `.kilocode/skills/openspec-*/`，路径不同不冲突；文档说明二选一即可 |
+| `openspec init` 生成的项目级 skill 与 libretto 全局 skill 命名冲突 | 低 | 都叫 propose 等 | libretto 强制 `openspec init --tools none`，跳过 per-tool skill 生成；openspec 1.6.0 的 `kilocode` adapter 仍按重构前布局写 `.kilocode/skills/openspec-*`，但 kilo CLI ≥ 7.4 不扫此目录，等效无输出 |
 | Kilo `plugin` 字段不生效 | 中 | Path B 不可用 | Path A（npm CLI）是唯一支持方法，README 明确警告（同 superpowers） |
 | Windows junction 创建失败 | 低 | skill 不加载 | 回退递归复制（同 superpowers） |
 | `kilo.jsonc` 含块注释导致解析失败 | 低 | Kilo 不启动 | 备份后恢复，退出 2（同 superpowers） |

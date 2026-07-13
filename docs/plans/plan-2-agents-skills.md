@@ -349,7 +349,7 @@ Run `openspec --version` (via bash). If it fails:
 
 Check if `openspec/` exists in the current project root. If not:
 - Tell the user: "This project hasn't been initialized with OpenSpec."
-- Offer to run `openspec init` (ask for permission first).
+- Offer to run `openspec init --tools none` (ask for permission first).
 - If user declines, stop — libretto cannot operate without openspec/.
 
 ## Skill load order

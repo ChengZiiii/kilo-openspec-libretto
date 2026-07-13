@@ -29,8 +29,16 @@ Run `openspec --version` (via bash). If it fails:
 
 Check if `openspec/` exists in the current project root. If not:
 - Tell the user: "This project hasn't been initialized with OpenSpec."
-- Offer to run `openspec init` (ask for permission first).
+- Offer to run `openspec init --tools none` (ask for permission first).
 - If user declines, stop — libretto cannot operate without openspec/.
+
+**Why `--tools none`**: openspec 1.6.0's per-tool adapters (e.g. `kilocode`)
+still write skill/command files into directories the current kilo CLI (≥ 7.4)
+does not scan (notably `.kilocode/skills/`). For libretto users those outputs
+are dead writes — they would not be loaded by any agent and only risk
+cluttering the project. `--tools none` keeps only the `openspec/` workspace
+(`config.yaml` + `changes/` + `specs/`) which is what libretto actually needs
+for propose / apply / sync / verify / archive.
 
 ## Skill load order
 

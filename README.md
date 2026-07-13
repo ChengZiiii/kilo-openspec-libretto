@@ -40,8 +40,15 @@ OpenSpec workflow.
 
 ```bash
 cd your-project
-openspec init
+openspec init --tools none
 ```
+
+> 💡 `--tools none` skips per-tool skill/command generation. openspec 1.6.0's
+> adapters (e.g. `kilocode`) still write into `.kilocode/skills/`, but kilo CLI
+> ≥ 7.4 (post-opencode refactor) no longer scans that directory — those files
+> would be dead writes. libretto already provides its own prefixed skills
+> (`libretto-*`) under `~/.kilo/skills/libretto/`, so we only need the
+> `openspec/` workspace (config + changes/ + specs/).
 
 ## What gets installed
 
